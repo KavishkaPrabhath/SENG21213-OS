@@ -23,6 +23,7 @@
 
 #include "vga.h"
 #include "keyboard.h"
+#include "process.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
 static void cmd_mem(void);
+static void cmd_ps(void);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -159,6 +161,47 @@ static void cmd_mem(void) {
                    VGA_YELLOW, VGA_BLACK);
 }
 
+static const char *process_state_name(proc_state_t state)
+{
+    switch (state) {
+        case READY:      return "READY";
+        case RUNNING:    return "RUNNING";
+        case BLOCKED:    return "BLOCKED";
+        case TERMINATED: return "TERMINATED";
+        default:         return "UNKNOWN";
+    }
+}
+
+static void cmd_ps(void)
+{
+    uint32_t i;
+    const pcb_t *process;
+
+    vga_puts_color("\n  Process List\n", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  PID     STATE\n");
+    vga_puts("  ----------------\n");
+
+    for (i = 0; i < MAX_PROCESSES; i++) {
+        process = process_get(i);
+
+        if (process != 0 && process->pid != 0) {
+            vga_puts("  ");
+
+            /* Stage 1 supports PIDs 1-16. */
+            if (process->pid >= 10) {
+                vga_putchar('0' + (process->pid / 10));
+            }
+
+            vga_putchar('0' + (process->pid % 10));
+            vga_puts("       ");
+            vga_puts(process_state_name(process->state));
+            vga_puts("\n");
+        }
+    }
+
+    vga_puts("\n");
+}
+
 /* ---------------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
@@ -188,9 +231,20 @@ static void shell_run(void) {
             continue;
         }
 
+        /* Stage 1: Process Management */
+        if (k_strcmp(cmd, "ps") == 0) {
+            cmd_ps();
+            continue;
+        }
+
+        if (k_strcmp(cmd, "yield") == 0) {
+           process_yield();
+           vga_puts("Process yielded.\n");
+           continue;
+        }
+
         /* Milestone stubs */
-        if (k_strcmp(cmd, "ps")      == 0 ||
-            k_strcmp(cmd, "kill")    == 0 ||
+        if (k_strcmp(cmd, "kill")    == 0 ||
             k_strcmp(cmd, "threads") == 0 ||
             k_strcmp(cmd, "free")    == 0 ||
             k_strcmp(cmd, "ls")      == 0 ||
@@ -207,12 +261,23 @@ static void shell_run(void) {
     }
 }
 
+static void test_process(void)
+{
+    while (true) {
+        /* Stage 1 test process */
+    }
+}
+
 /* ---------------------------------------------------------------------------
  * Kernel entry point – called from kernel_entry.asm
  * --------------------------------------------------------------------------*/
 void kernel_main(void) {
     vga_init();
     kb_init();
+    process_init();
+    process_create(test_process);
+    process_create(test_process);
+    process_yield();
     print_splash();
     shell_run();
 
