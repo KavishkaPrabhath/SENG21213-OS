@@ -1,0 +1,8 @@
+build/
+seng21213.img
+*.o
+*.bin
+*.elf
+
+Dockerfile
+seng21213-os.img
