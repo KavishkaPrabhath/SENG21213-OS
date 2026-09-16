@@ -24,6 +24,8 @@
 #include "vga.h"
 #include "keyboard.h"
 #include "process.h"
+#include "thread.h"
+#include "mutex.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -35,6 +37,7 @@ static void cmd_about(void);
 static void cmd_echo(const char *args);
 static void cmd_mem(void);
 static void cmd_ps(void);
+static void cmd_threads(void);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -202,6 +205,40 @@ static void cmd_ps(void)
     vga_puts("\n");
 }
 
+static void cmd_threads(void)
+{
+    uint32_t i;
+
+    vga_puts_color("\n  Thread List\n", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  TID     OWNER     STATE\n");
+    vga_puts("  -----------------------\n");
+
+    for (i = 0; i < MAX_THREADS; i++) {
+        const thread_t *thread = thread_get(i);
+
+        if (thread != 0) {
+            vga_puts("  ");
+
+            if (thread->tid >= 10)
+                vga_putchar('0' + (thread->tid / 10));
+
+            vga_putchar('0' + (thread->tid % 10));
+            vga_puts("       ");
+
+            if (thread->owner_pid >= 10)
+                vga_putchar('0' + (thread->owner_pid / 10));
+
+            vga_putchar('0' + (thread->owner_pid % 10));
+            vga_puts("         ");
+
+            vga_puts(thread_state_name(thread->state));
+            vga_puts("\n");
+        }
+    }
+
+    vga_puts("\n");
+}
+
 /* ---------------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
@@ -243,9 +280,14 @@ static void shell_run(void) {
            continue;
         }
 
+	/* Stage 2: Threads */
+		if (k_strcmp(cmd, "threads") == 0) {
+    		cmd_threads();
+   	 	continue;
+	}
+
         /* Milestone stubs */
         if (k_strcmp(cmd, "kill")    == 0 ||
-            k_strcmp(cmd, "threads") == 0 ||
             k_strcmp(cmd, "free")    == 0 ||
             k_strcmp(cmd, "ls")      == 0 ||
             k_strcmp(cmd, "cat")     == 0) {
@@ -268,6 +310,13 @@ static void test_process(void)
     }
 }
 
+static void test_thread(void)
+{
+    while (true) {
+        /* Stage 2 test thread */
+    }
+}
+
 /* ---------------------------------------------------------------------------
  * Kernel entry point – called from kernel_entry.asm
  * --------------------------------------------------------------------------*/
@@ -277,6 +326,8 @@ void kernel_main(void) {
     process_init();
     process_create(test_process);
     process_create(test_process);
+    thread_create(1,test_thread);
+    thread_create(1,test_thread);
     process_yield();
     print_splash();
     shell_run();
