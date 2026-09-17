@@ -28,6 +28,7 @@
 #include "mutex.h"
 #include "pmm.h"
 #include "vmm.h"
+#include "fs.h"
 #include "../include/types.h"
 
 static void print_uint(uint32_t value)
@@ -64,6 +65,8 @@ static void cmd_echo(const char *args);
 static void cmd_mem(void);
 static void cmd_ps(void);
 static void cmd_threads(void);
+static void cmd_ls(void);
+static void cmd_cat(const char *filename);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -265,6 +268,58 @@ static void cmd_threads(void)
     vga_puts("\n");
 }
 
+static void cmd_ls(void)
+{
+    uint32_t i;
+    uint32_t count = 0;
+
+    vga_puts_color("\n  Files\n", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  ------------------------------\n");
+
+    for (i = 0; i < FS_MAX_FILES; i++) {
+        fs_file_t *file = fs_get_file(i);
+
+        if (file != 0 && file->used) {
+            vga_puts("  ");
+            vga_puts(file->name);
+            vga_puts("  (");
+            print_uint(file->size);
+            vga_puts(" bytes)\n");
+            count++;
+        }
+    }
+
+    if (count == 0) {
+        vga_puts("  No files found.\n");
+    }
+
+    vga_puts("\n");
+}
+
+static void cmd_cat(const char *filename)
+{
+    fs_file_t *file;
+
+    filename = k_ltrim(filename);
+
+    if (*filename == '\0') {
+        vga_puts("Usage: cat <filename>\n");
+        return;
+    }
+
+    file = fs_find(filename);
+
+    if (file == 0) {
+        vga_puts("File not found: ");
+        vga_puts(filename);
+        vga_puts("\n");
+        return;
+    }
+
+    vga_puts(file->data);
+    vga_puts("\n");
+}
+
 /* ---------------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
@@ -329,10 +384,19 @@ if (k_strcmp(cmd, "free") == 0) {
     continue;
 }	
 
+	/* Stage 4: File System */
+	if (k_strcmp(cmd, "ls") == 0) {
+    		cmd_ls();
+    		continue;
+	}
+
+	if (k_strncmp(cmd, "cat ", 4) == 0) {
+ 	    cmd_cat(k_ltrim(cmd + 4));
+	    continue;
+	}
+
         /* Milestone stubs */
-        if (k_strcmp(cmd, "kill")    == 0 ||
-            k_strcmp(cmd, "ls")      == 0 ||
-            k_strcmp(cmd, "cat")     == 0) {
+        if (k_strcmp(cmd, "kill")    == 0) {
             vga_puts_color("  [TODO] This command is not yet implemented.\n",
                            VGA_YELLOW, VGA_BLACK);
             vga_puts("  Implement it as part of your lecture assignment.\n");
@@ -368,6 +432,12 @@ void kernel_main(void) {
     process_init();
     pmm_init();
     vmm_init();
+    fs_init();
+    fs_create("welcome.txt");
+    fs_write("welcome.txt", "Welcome to SENG21213-OS File System!");
+
+    fs_create("readme.txt");
+    fs_write("readme.txt", "Stage 4 RAM-based file system is working.");
     process_create(test_process);
     process_create(test_process);
     thread_create(1,test_thread);
