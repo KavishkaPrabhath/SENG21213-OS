@@ -31,6 +31,14 @@ thread_t *thread_create(uint32_t owner_pid, void (*entry)(void));
 void thread_yield(void);
 void thread_exit(void);
 
+/* Scheduler helpers for real thread context switching. */
+thread_t *thread_schedule_next(void);
+int thread_ready_available(void);
+thread_t *thread_current(void);
+void thread_preempt_current(uint32_t esp);
+void thread_block_current(void);
+void thread_wake(thread_t *thread);
+
 const thread_t *thread_get(uint32_t index);
 const char *thread_state_name(thread_state_t state);
 

@@ -1,4 +1,5 @@
 #include "process.h"
+#include "thread.h"
 
 /*
  * Simple Round-Robin Scheduler
@@ -9,6 +10,14 @@
 static pcb_t *ready_head = 0;
 static pcb_t *ready_tail = 0;
 static pcb_t *current_process = 0;
+
+/*
+ * Tracks which kind of context currently owns the CPU.
+ * 0 = process/kernel context
+ * 1 = thread context
+ */
+static int running_thread = 0;
+static int prefer_thread = 1;
 
 /*
  * PCB used to preserve the original kernel/shell execution context.
@@ -130,6 +139,8 @@ void scheduler_tick(void)
 uint32_t scheduler_switch(uint32_t current_esp)
 {
     pcb_t *next;
+    thread_t *next_thread;
+
 
     /*
      * On the first timer interrupt, preserve the kernel/shell
@@ -145,24 +156,57 @@ uint32_t scheduler_switch(uint32_t current_esp)
         kernel_context_saved = 1;
         enqueue(&kernel_context);
     }
+    else if (running_thread) {
+        /*
+         * The interrupted context belongs to a Stage 2 thread.
+         * Save its real CPU stack pointer before selecting another context.
+         */
+        thread_preempt_current(current_esp);
+	running_thread = 0;
+    }
     else if (current_process != 0 &&
              current_process->state == RUNNING) {
 
-        /* Save the interrupted process context. */
+        /* Save the interrupted process/kernel context. */
         current_process->esp = current_esp;
         current_process->state = READY;
         enqueue(current_process);
     }
 
+/* Give a ready kernel thread a turn on the CPU. */
+if (prefer_thread && thread_ready_available()) {
+    next_thread = thread_schedule_next();
+
+    if (next_thread != 0) {
+        running_thread = 1;
+	prefer_thread = 0;
+        current_process = 0;
+        return next_thread->esp;
+    }
+}
+
     /* Select the next context in Round-Robin order. */
     next = dequeue();
 
     if (next == 0) {
-        return current_esp;
+    if (thread_ready_available()) {
+        next_thread = thread_schedule_next();
+
+        if (next_thread != 0) {
+            running_thread = 1;
+            prefer_thread = 0;
+            current_process = 0;
+            return next_thread->esp;
+        }
     }
+
+    return current_esp;
+}
 
     next->state = RUNNING;
     current_process = next;
+    running_thread = 0;
+    prefer_thread = 1;
 
     return next->esp;
 }

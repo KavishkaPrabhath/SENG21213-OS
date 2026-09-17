@@ -6,3 +6,5 @@ seng21213.img
 
 Dockerfile
 seng21213-os.img
+kernel/thread.c.stage2-backup
+kernel/mutex.c.stage2-backup
