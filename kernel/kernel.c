@@ -26,12 +26,38 @@
 #include "process.h"
 #include "thread.h"
 #include "mutex.h"
+#include "pmm.h"
+#include "vmm.h"
 #include "../include/types.h"
+
+static void print_uint(uint32_t value)
+{
+    char buffer[11];
+    int i = 0;
+
+    if (value == 0) {
+        vga_puts("0");
+        return;
+    }
+
+    while (value > 0) {
+        buffer[i++] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    while (i > 0) {
+        char digit[2];
+        digit[0] = buffer[--i];
+        digit[1] = '\0';
+        vga_puts(digit);
+    }
+}
 
 /* ---------------------------------------------------------------------------
  * Forward declarations of shell commands
  * --------------------------------------------------------------------------*/
 static void cmd_help(void);
+static void print_uint(uint32_t value);
 static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
@@ -286,9 +312,25 @@ static void shell_run(void) {
    	 	continue;
 	}
 
+	/* Stage 3: Memory Management */
+if (k_strcmp(cmd, "free") == 0) {
+    vga_puts("Total pages : ");
+    print_uint(pmm_total_pages());
+    vga_puts("\n");
+
+    vga_puts("Used pages  : ");
+    print_uint(pmm_used_pages());
+    vga_puts("\n");
+
+    vga_puts("Free pages  : ");
+    print_uint(pmm_free_pages());
+    vga_puts("\n");
+
+    continue;
+}	
+
         /* Milestone stubs */
         if (k_strcmp(cmd, "kill")    == 0 ||
-            k_strcmp(cmd, "free")    == 0 ||
             k_strcmp(cmd, "ls")      == 0 ||
             k_strcmp(cmd, "cat")     == 0) {
             vga_puts_color("  [TODO] This command is not yet implemented.\n",
@@ -324,6 +366,8 @@ void kernel_main(void) {
     vga_init();
     kb_init();
     process_init();
+    pmm_init();
+    vmm_init();
     process_create(test_process);
     process_create(test_process);
     thread_create(1,test_thread);
