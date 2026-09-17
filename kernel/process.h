@@ -33,6 +33,7 @@ pcb_t *process_create(void (*entry)(void));
 void process_yield(void);
 void process_exit(void);
 void scheduler_tick(void);
+uint32_t scheduler_switch(uint32_t current_esp);
 void scheduler_add(pcb_t *process);
 
 /* Return the PCB at the given process-table index. */

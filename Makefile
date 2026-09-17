@@ -44,8 +44,8 @@ endif
 BOOT_SRC  := boot/boot.asm
 BOOT_BIN  := boot/boot.bin
 
-KERNEL_ASM_SRC := kernel/kernel_entry.asm
-KERNEL_ASM_OBJ := build/kernel_entry.o
+KERNEL_ASM_SRC := kernel/kernel_entry.asm boot/switch.asm
+KERNEL_ASM_OBJ := build/kernel_entry.o build/switch.o
 
 KERNEL_C_SRCS  := kernel/kernel.c \
                    kernel/vga.c    \
@@ -56,7 +56,9 @@ KERNEL_C_SRCS  := kernel/kernel.c \
                    kernel/mutex.c \
                  kernel/pmm.c \
                  kernel/vmm.c \
-                 kernel/fs.c
+                 kernel/fs.c \
+                 kernel/timer.c \
+                 kernel/interrupts.c
 
 # Add your new source files below as the course progresses:
 # Lecture 09: kernel/process.c kernel/scheduler.c
@@ -91,7 +93,13 @@ $(BOOT_BIN): $(BOOT_SRC)
 # ---------------------------------------------------------------------------
 # Kernel: Assembly object
 # ---------------------------------------------------------------------------
-$(KERNEL_ASM_OBJ): $(KERNEL_ASM_SRC)
+build/%.o: kernel/%.asm
+	@mkdir -p build
+	@echo "  [AS]  $<"
+	$(AS) $(ASFLAGS) $< -o $@
+
+# Stage 1 context-switch assembly
+build/switch.o: boot/switch.asm
 	@mkdir -p build
 	@echo "  [AS]  $<"
 	$(AS) $(ASFLAGS) $< -o $@
