@@ -26,6 +26,7 @@
 #include "process.h"
 #include "thread.h"
 #include "mutex.h"
+#include "semaphore.h"
 #include "pmm.h"
 #include "vmm.h"
 #include "fs.h"
@@ -418,10 +419,27 @@ static void test_process(void)
     }
 }
 
+/*
+ * Stage 2 synchronization demonstration.
+ * Both kernel threads update the same global value.
+ * The mutex protects the critical section.
+ */
+static volatile uint32_t myglobal = 0;
+static mutex_t test_mutex;
+static semaphore_t test_semaphore;
+
 static void test_thread(void)
 {
     while (true) {
-        /* Stage 2 test thread */
+        mutex_lock(&test_mutex);
+
+        /* Critical section: shared global data. */
+        myglobal++;
+
+        mutex_unlock(&test_mutex);
+
+        /* Allow the timer scheduler to run another context. */
+        thread_yield();
     }
 }
 
@@ -432,6 +450,7 @@ void kernel_main(void) {
     vga_init();
     kb_init();
     process_init();
+    thread_init();
     interrupts_init();
     timer_init(100);
     pmm_init();
@@ -444,8 +463,14 @@ void kernel_main(void) {
     fs_write("readme.txt", "Stage 4 RAM-based file system is working.");
     process_create(test_process);
     process_create(test_process);
-    thread_create(1,test_thread);
-    thread_create(1,test_thread);
+
+    /* Stage 2 synchronization objects. */
+    mutex_init(&test_mutex);
+    semaphore_init(&test_semaphore, 1);
+
+    /* Two kernel threads share myglobal through the mutex. */
+    thread_create(1, test_thread);
+    thread_create(1, test_thread);
     /* process_yield(); -- disabled: PIT scheduler performs the real context switch */
     interrupts_enable();
     print_splash();

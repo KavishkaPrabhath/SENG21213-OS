@@ -74,8 +74,38 @@ thread_t *thread_create(uint32_t owner_pid, void (*entry)(void))
     thread->owner_pid = owner_pid;
     thread->state = THREAD_READY;
     thread->entry = entry;
-    thread->esp =
-        (uint32_t)&thread->stack[THREAD_STACK_SIZE / 4];
+
+    /*
+     * Build the initial interrupt-return context on the thread stack.
+     * This matches the context restored by irq0_stub:
+     *   gs, fs, es, ds
+     *   general-purpose registers via POPA
+     *   EIP, CS and EFLAGS via IRETD
+     */
+    uint32_t *sp = &thread->stack[THREAD_STACK_SIZE / 4];
+
+    /* IRET frame. */
+    *--sp = 0x00000202;          /* EFLAGS: IF=1 */
+    *--sp = 0x00000008;          /* Kernel code selector */
+    *--sp = (uint32_t)entry;     /* Initial EIP */
+
+    /* PUSHA frame restored by POPA. */
+    *--sp = 0;                   /* EAX */
+    *--sp = 0;                   /* ECX */
+    *--sp = 0;                   /* EDX */
+    *--sp = 0;                   /* EBX */
+    *--sp = 0;                   /* Original ESP slot */
+    *--sp = 0;                   /* EBP */
+    *--sp = 0;                   /* ESI */
+    *--sp = 0;                   /* EDI */
+
+    /* Segment registers. */
+    *--sp = 0x10;                /* DS */
+    *--sp = 0x10;                /* ES */
+    *--sp = 0x10;                /* FS */
+    *--sp = 0x10;                /* GS */
+
+    thread->esp = (uint32_t)sp;
     thread->next = 0;
 
     thread_count++;
@@ -84,7 +114,12 @@ thread_t *thread_create(uint32_t owner_pid, void (*entry)(void))
     return thread;
 }
 
-void thread_yield(void)
+int thread_ready_available(void)
+{
+    return ready_head != 0;
+}
+
+thread_t *thread_schedule_next(void)
 {
     thread_t *next;
 
@@ -99,11 +134,61 @@ void thread_yield(void)
 
     if (next == 0) {
         current_thread = 0;
-        return;
+        return 0;
     }
 
     next->state = THREAD_RUNNING;
     current_thread = next;
+
+    return next;
+}
+
+thread_t *thread_current(void)
+{
+    return current_thread;
+}
+
+void thread_preempt_current(uint32_t esp)
+{
+    if (current_thread == 0)
+        return;
+
+    current_thread->esp = esp;
+
+    if (current_thread->state == THREAD_RUNNING) {
+        current_thread->state = THREAD_READY;
+        enqueue(current_thread);
+    }
+
+    current_thread = 0;
+}
+
+void thread_block_current(void)
+{
+    if (current_thread == 0)
+        return;
+
+    current_thread->state = THREAD_BLOCKED;
+}
+
+void thread_wake(thread_t *thread)
+{
+    if (thread == 0)
+        return;
+
+    if (thread->state == THREAD_BLOCKED) {
+        thread->state = THREAD_READY;
+        enqueue(thread);
+    }
+}
+
+void thread_yield(void)
+{
+    /*
+     * Wait for the next timer interrupt.
+     * IRQ0 performs the real low-level ESP context switch.
+     */
+    __asm__ __volatile__("hlt");
 }
 
 void thread_exit(void)
@@ -111,10 +196,18 @@ void thread_exit(void)
     if (current_thread == 0)
         return;
 
+    /*
+     * Mark this thread as terminated but keep current_thread
+     * valid until IRQ0 saves and removes the current context.
+     */
     current_thread->state = THREAD_TERMINATED;
-    current_thread = 0;
 
     thread_yield();
+
+    /* A terminated thread must never continue executing. */
+    while (1) {
+        __asm__ __volatile__("hlt");
+    }
 }
 
 const thread_t *thread_get(uint32_t index)
