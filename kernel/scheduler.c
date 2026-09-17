@@ -10,6 +10,13 @@ static pcb_t *ready_head = 0;
 static pcb_t *ready_tail = 0;
 static pcb_t *current_process = 0;
 
+/*
+ * PCB used to preserve the original kernel/shell execution context.
+ * PID 0 is reserved for the kernel context.
+ */
+static pcb_t kernel_context;
+static int kernel_context_saved = 0;
+
 
 /* Add a process to the end of the ready queue */
 static void enqueue(pcb_t *process)
@@ -113,4 +120,49 @@ void process_exit(void)
 void scheduler_tick(void)
 {
     process_yield();
+}
+
+/*
+ * Preemptive Round-Robin context switch.
+ * current_esp points to the interrupt frame saved by irq0_stub.
+ * Returns the ESP of the process that should run next.
+ */
+uint32_t scheduler_switch(uint32_t current_esp)
+{
+    pcb_t *next;
+
+    /*
+     * On the first timer interrupt, preserve the kernel/shell
+     * context so that Round-Robin can return to it later.
+     */
+    if (!kernel_context_saved) {
+        kernel_context.pid = 0;
+        kernel_context.state = READY;
+        kernel_context.esp = current_esp;
+        kernel_context.eip = 0;
+        kernel_context.next = 0;
+
+        kernel_context_saved = 1;
+        enqueue(&kernel_context);
+    }
+    else if (current_process != 0 &&
+             current_process->state == RUNNING) {
+
+        /* Save the interrupted process context. */
+        current_process->esp = current_esp;
+        current_process->state = READY;
+        enqueue(current_process);
+    }
+
+    /* Select the next context in Round-Robin order. */
+    next = dequeue();
+
+    if (next == 0) {
+        return current_esp;
+    }
+
+    next->state = RUNNING;
+    current_process = next;
+
+    return next->esp;
 }

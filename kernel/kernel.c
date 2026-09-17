@@ -29,6 +29,8 @@
 #include "pmm.h"
 #include "vmm.h"
 #include "fs.h"
+#include "timer.h"
+#include "interrupts.h"
 #include "../include/types.h"
 
 static void print_uint(uint32_t value)
@@ -356,7 +358,7 @@ static void shell_run(void) {
         }
 
         if (k_strcmp(cmd, "yield") == 0) {
-           process_yield();
+    /* process_yield(); -- disabled: PIT scheduler performs the real context switch */
            vga_puts("Process yielded.\n");
            continue;
         }
@@ -430,6 +432,8 @@ void kernel_main(void) {
     vga_init();
     kb_init();
     process_init();
+    interrupts_init();
+    timer_init(100);
     pmm_init();
     vmm_init();
     fs_init();
@@ -442,7 +446,8 @@ void kernel_main(void) {
     process_create(test_process);
     thread_create(1,test_thread);
     thread_create(1,test_thread);
-    process_yield();
+    /* process_yield(); -- disabled: PIT scheduler performs the real context switch */
+    interrupts_enable();
     print_splash();
     shell_run();
 
