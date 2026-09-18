@@ -66,6 +66,7 @@ static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
 static void cmd_mem(void);
+static void cmd_memtest(void);
 static void cmd_ps(void);
 static void cmd_threads(void);
 static void cmd_ls(void);
@@ -184,16 +185,84 @@ static void cmd_echo(const char *args) {
 }
 
 static void cmd_mem(void) {
-    /* Stage 0 stub – students implement the real PMM in Lecture 11 */
-    vga_puts_color("\n  Memory Map (stub – implement PMM in Lecture 11)\n",
+    vga_puts_color("\n  Stage 3 Memory Management\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
-    vga_puts("  ─────────────────────────────────────────────\n");
-    vga_puts("  0x00000000 – 0x000FFFFF  :  First 1 MB (reserved/BIOS)\n");
-    vga_puts("  0x00100000 – 0x00EFFFFF  :  Extended memory (usable ~14 MB)\n");
-    vga_puts("  0x00F00000 – 0x00FFFFFF  :  BIOS / ROM area\n");
-    vga_puts("  0xB8000    – 0xBFFFF     :  VGA frame buffer\n");
-    vga_puts_color("\n  TODO: Use BIOS int 0x15, EAX=0xE820 to get real memory map\n\n",
-                   VGA_YELLOW, VGA_BLACK);
+    vga_puts("  ---------------------------------------------\n");
+
+    vga_puts("  Page size    : ");
+    print_uint(PAGE_SIZE);
+    vga_puts(" bytes\n");
+
+    vga_puts("  Total pages  : ");
+    print_uint(pmm_total_pages());
+    vga_puts("\n");
+
+    vga_puts("  Used pages   : ");
+    print_uint(pmm_used_pages());
+    vga_puts("\n");
+
+    vga_puts("  Free pages   : ");
+    print_uint(pmm_free_pages());
+    vga_puts("\n");
+
+    vga_puts("  VMM mappings : ");
+    print_uint(vmm_mapped_pages());
+    vga_puts("\n\n");
+}
+
+static void cmd_memtest(void)
+{
+    void *page;
+    void *translated;
+    uint32_t free_before;
+    uint32_t free_after_alloc;
+    uint32_t free_after_free;
+    uint32_t test_virtual = 0x40000000;
+
+    vga_puts_color("\n  Stage 3 PMM/VMM Test\n",
+                   VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  ---------------------------------------------\n");
+
+    free_before = pmm_free_pages();
+
+    page = pmm_alloc_page();
+
+    if (page == 0) {
+        vga_puts_color("  [FAIL] Physical page allocation failed.\n\n",
+                       VGA_LIGHT_RED, VGA_BLACK);
+        return;
+    }
+
+    free_after_alloc = pmm_free_pages();
+
+    if (free_after_alloc + 1 == free_before)
+        vga_puts("  [PASS] PMM allocated one 4 KB page.\n");
+    else
+        vga_puts("  [FAIL] PMM allocation statistics incorrect.\n");
+
+    if (vmm_map_page(test_virtual, page, PAGE_WRITABLE) != 0) {
+        vga_puts_color("  [FAIL] VMM page mapping failed.\n",
+                       VGA_LIGHT_RED, VGA_BLACK);
+        pmm_free_page(page);
+        return;
+    }
+
+    translated = vmm_translate(test_virtual);
+
+    if (translated == page)
+        vga_puts("  [PASS] VMM map/translate succeeded.\n");
+    else
+        vga_puts("  [FAIL] VMM translation returned wrong page.\n");
+
+    pmm_free_page(page);
+    free_after_free = pmm_free_pages();
+
+    if (free_after_free == free_before)
+        vga_puts("  [PASS] PMM page successfully freed.\n");
+    else
+        vga_puts("  [FAIL] PMM free statistics incorrect.\n");
+
+    vga_puts("\n");
 }
 
 static const char *process_state_name(proc_state_t state)
@@ -345,7 +414,8 @@ static void shell_run(void) {
         if (k_strcmp(cmd, "help")  == 0) { cmd_help();  continue; }
         if (k_strcmp(cmd, "clear") == 0) { cmd_clear(); continue; }
         if (k_strcmp(cmd, "about") == 0) { cmd_about(); continue; }
-        if (k_strcmp(cmd, "mem")   == 0) { cmd_mem();   continue; }
+        if (k_strcmp(cmd, "mem")   == 0) { cmd_mem();     continue; }
+        if (k_strcmp(cmd, "memtest") == 0) { cmd_memtest(); continue; }
 
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
