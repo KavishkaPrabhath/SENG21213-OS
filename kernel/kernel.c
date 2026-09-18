@@ -71,6 +71,9 @@ static void cmd_ps(void);
 static void cmd_threads(void);
 static void cmd_ls(void);
 static void cmd_cat(const char *filename);
+static void cmd_touch(const char *filename);
+static void cmd_write(const char *args);
+static void cmd_rm(const char *filename);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -153,14 +156,17 @@ static void cmd_help(void) {
     vga_puts("  clear   – Clear the screen\n");
     vga_puts("  about   – About this OS and course\n");
     vga_puts("  echo    – Echo text to screen\n");
-    vga_puts("  mem     – Memory map (stub)\n");
-    vga_puts_color("\n  Milestones (to implement):\n", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  mem     – Show memory management statistics\n");
+    vga_puts_color("\n  Course Features:\n", VGA_LIGHT_CYAN, VGA_BLACK);
     vga_puts("  ps      – [L09] List processes\n");
     vga_puts("  kill    – [L09] Terminate a process\n");
     vga_puts("  threads – [L10] List kernel threads\n");
     vga_puts("  free    – [L11] Show free memory\n");
     vga_puts("  ls      – [L12] List files\n");
-    vga_puts("  cat     – [L12] Print file contents\n\n");
+    vga_puts("  cat     – [L12] Print file contents\n");
+    vga_puts("  touch   – [L12] Create an empty file\n");
+    vga_puts("  write   – [L12] Write text to a file\n");
+    vga_puts("  rm      – [L12] Delete a file\n\n");
 }
 
 static void cmd_clear(void) {
@@ -392,6 +398,90 @@ static void cmd_cat(const char *filename)
     vga_puts("\n");
 }
 
+static void cmd_touch(const char *filename)
+{
+    filename = k_ltrim(filename);
+
+    if (*filename == '\0') {
+        vga_puts("Usage: touch <filename>\n");
+        return;
+    }
+
+    if (fs_create(filename) == 0) {
+        vga_puts("File created: ");
+        vga_puts(filename);
+        vga_puts("\n");
+    } else {
+        vga_puts("Could not create file: ");
+        vga_puts(filename);
+        vga_puts("\n");
+    }
+}
+
+static void cmd_write(const char *args)
+{
+    char filename[FS_MAX_NAME];
+    uint32_t i = 0;
+    const char *data;
+
+    args = k_ltrim(args);
+
+    if (*args == '\0') {
+        vga_puts("Usage: write <filename> <text>\n");
+        return;
+    }
+
+    while (*args != '\0' && *args != ' ' && i < FS_MAX_NAME - 1) {
+        filename[i++] = *args++;
+    }
+    filename[i] = '\0';
+
+    args = k_ltrim(args);
+    data = args;
+
+    if (*data == '\0') {
+        vga_puts("Usage: write <filename> <text>\n");
+        return;
+    }
+
+    if (fs_find(filename) == 0) {
+        vga_puts("File not found: ");
+        vga_puts(filename);
+        vga_puts("\n");
+        return;
+    }
+
+    if (fs_write(filename, data) >= 0) {
+        vga_puts("File written: ");
+        vga_puts(filename);
+        vga_puts("\n");
+    } else {
+        vga_puts("Could not write file: ");
+        vga_puts(filename);
+        vga_puts("\n");
+    }
+}
+
+static void cmd_rm(const char *filename)
+{
+    filename = k_ltrim(filename);
+
+    if (*filename == '\0') {
+        vga_puts("Usage: rm <filename>\n");
+        return;
+    }
+
+    if (fs_delete(filename) == 0) {
+        vga_puts("File deleted: ");
+        vga_puts(filename);
+        vga_puts("\n");
+    } else {
+        vga_puts("File not found: ");
+        vga_puts(filename);
+        vga_puts("\n");
+    }
+}
+
 /* ---------------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
@@ -467,6 +557,21 @@ if (k_strcmp(cmd, "free") == 0) {
  	    cmd_cat(k_ltrim(cmd + 4));
 	    continue;
 	}
+
+        if (k_strncmp(cmd, "touch ", 6) == 0) {
+            cmd_touch(k_ltrim(cmd + 6));
+            continue;
+        }
+
+        if (k_strncmp(cmd, "write ", 6) == 0) {
+            cmd_write(k_ltrim(cmd + 6));
+            continue;
+        }
+
+        if (k_strncmp(cmd, "rm ", 3) == 0) {
+            cmd_rm(k_ltrim(cmd + 3));
+            continue;
+        }
 
         /* Milestone stubs */
         if (k_strcmp(cmd, "kill")    == 0) {
